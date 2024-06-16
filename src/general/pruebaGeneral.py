@@ -4,7 +4,7 @@ from pyrwr.rwr import RWR
 from surprise import Dataset, KNNBasic, Reader
 
 
-def RandomWalkRestartCompleto(df_coauthors, df_journals, autor, n, c=0.15, epsilon=1e-5, max_iters=100):
+def RandomWalkRestartCompleto(df_coauthors, df_journals, autor, n, c=0.15, epsilon=1e-9, max_iters=100):
     # Renombrar columnas de df_journals para que coincidan con df_coauthors
     df_journals = df_journals.rename(columns={'codigo_revista': 'codigo_item', 'publicaciones_normalizadas': 'peso'})
     df_coauthors = df_coauthors.rename(columns={'codigo_coautor': 'codigo_item', 'coautorías_normalizadas': 'peso'})
@@ -44,13 +44,7 @@ def RandomWalkRestartCompleto(df_coauthors, df_journals, autor, n, c=0.15, epsil
     graph_type = 'directed'
     rwr.read_graph(ruta, graph_type)
 
-    # Parámetros:
-    # -> autor_indice: es la semilla de la que parte el algoritmo
-    # -> c: la probabilidad de reiniciar el random walk (por defecto 0.15)
-    # -> epsilon: la tolerancia para la convergencia del algoritmo (por defecto 1e-5)
-    # -> max_iters: el número máximo de iteraciones (por defecto 100)
     r = rwr.compute(autor_indice, c=c, epsilon=epsilon, max_iters=max_iters)
-    # Salida: un vector con los puntuajes de cada nodo
 
     # Excluir el propio autor de los resultados
     r[autor_indice] = 0
@@ -129,10 +123,10 @@ def getRevistas(df_journals, autor):
 def getRevistasPeso(df_journals, autor):
     return df_journals[df_journals['codigo_autor'] == autor][['codigo_revista', 'publicaciones_normalizadas']]
 
-def FCSurprise(df_coauthors, autor, k=5):
+def FCSurprise(df_coauthors, autor, k=5, num_revistas=10):
     #inicializar el reader
     reader = Reader(rating_scale=(df_coauthors['publicaciones_normalizadas'].min(), df_coauthors['publicaciones_normalizadas'].max()))
-    print (df_coauthors['publicaciones_normalizadas'].min(), df_coauthors['publicaciones_normalizadas'].max())
+    #print (df_coauthors['publicaciones_normalizadas'].min(), df_coauthors['publicaciones_normalizadas'].max())
     data_train = Dataset.load_from_df(df_coauthors[['codigo_autor', 'codigo_revista', 'publicaciones_normalizadas']], reader)
 
     trainset = data_train.build_full_trainset()
@@ -166,11 +160,11 @@ def FCSurprise(df_coauthors, autor, k=5):
     revistas_recomendadas = [(revista, revistas_recomendadas.count(revista)) for revista in revistas_recomendadas]
     revistas_recomendadas = list(set(revistas_recomendadas))
     revistas_recomendadas.sort(key=lambda x: x[1], reverse=True)
-    revistas_recomendadas = [revista for revista, _ in revistas_recomendadas][:10]
+    revistas_recomendadas = [revista for revista, _ in revistas_recomendadas]
     
-    return vecinos_ids, revistas_recomendadas
+    return vecinos_ids,revistas_recomendadas[:num_revistas]
     
-def FC(df_coauthors, autor, k=5):
+def FC(df_coauthors, autor, k=30):
 
     # Crear un DataFrame pivote donde las filas son los autores y las columnas son los coautores con el valor de coautorías normalizadas
     pivot_df = df_coauthors.pivot(index='codigo_autor', columns='codigo_coautor', values='coautorías_normalizadas').fillna(0)
@@ -192,7 +186,7 @@ def FC(df_coauthors, autor, k=5):
 
     return vecinos_mas_cercanos
 
-def calcular_ranking_revistas (df_journals, vecinos_mas_cercanos):
+def calcular_ranking_revistas (df_journals, vecinos_mas_cercanos, num_revistas=10):
     ranking_revistas = {}
 
     # Recorrer cada vecino y sus pesos
@@ -211,18 +205,19 @@ def calcular_ranking_revistas (df_journals, vecinos_mas_cercanos):
                 ranking_revistas[revista] = puntuacion
 
     # Ordenar el ranking de revistas y limitar a las 10 mejores
-    ranking_revistas_ordenado = sorted(ranking_revistas.items(), key=lambda x: x[1], reverse=True)[:10]
+    ranking_revistas_ordenado = sorted(ranking_revistas.items(), key=lambda x: x[1], reverse=True)
 
     #devolvemos tanto la revista como la puntuación
-    return ranking_revistas_ordenado
+    #return ranking_revistas_ordenado
 
-    #return [revista for revista, _ in ranking_revistas_ordenado]
+    return [revista for revista, _ in ranking_revistas_ordenado][:num_revistas]
         
 def calcular_metricas(df_test, revistas_recomendadas, autor):
     # Filtrar las publicaciones del autor en el conjunto de test
     publicaciones_test = getRevistas(df_test, autor)
 
     print(f"Publicaciones test: \t{publicaciones_test}")
+    #print(f"Publicaciones recomendadas: \t{revistas_recomendadas}")
     # Calcular verdaderos positivos, falsos positivos y falsos negativos
     tp = len([revista for revista in revistas_recomendadas if revista in publicaciones_test])
     fp = len([revista for revista in revistas_recomendadas if revista not in publicaciones_test])
@@ -255,61 +250,133 @@ df_coauthors = pd.read_csv(file_path_coauthors)
 df_journals = pd.read_csv(file_path_journals)
 df_test = pd.read_csv(file_path_test)
 
-# Seleccionar un autor aleatorio que esté en el conjunto de coautores
-autor_aleatorio = df_authors['codigo_autor'].sample(n=1).iloc[0]
-while autor_aleatorio not in pd.read_csv(file_path_coauthors)['codigo_autor'].values:
+## Seleccionar un autor aleatorio que esté en el conjunto de coautores
+#autor_aleatorio = df_authors['codigo_autor'].sample(n=1).iloc[0]
+#while autor_aleatorio not in pd.read_csv(file_path_coauthors)['codigo_autor'].values:
+#    autor_aleatorio = df_authors['codigo_autor'].sample(n=1).iloc[0]
+#
+#if autor_aleatorio not in pd.read_csv(file_path_coauthors)['codigo_autor'].values:
+#    print(f"El autor {autor_aleatorio} no tiene coautores en el conjunto de entrenamiento.")
+#    exit()
+#num_vecinos = 5
+#num_revistas = 10
+#
+#print(f"Autor aleatorio: {autor_aleatorio}")
+#
+#print('\n\nFILTRADO COLABORATIVO PURO')
+## Calcular los autores más cercanos FC
+#vecinos = FC(df_coauthors, autor_aleatorio, num_vecinos)
+#print(f"Numero de vecinos: {len(vecinos)}")
+##for vecino, peso in vecinos:
+##    print(f"Vecino: {vecino}, Peso: {peso}")
+#
+## Calcular el ranking de revistas
+#ranking_revistas = calcular_ranking_revistas(df_journals, vecinos)
+##for revista in ranking_revistas:
+##    print(f"Revista: {revista}")
+#print(f"Numero de revistas: {len(ranking_revistas)}")
+#
+### Calcular las métricas de precisión, recall y F1 score
+#precision, recall, f1 = calcular_metricas(df_test, ranking_revistas, autor_aleatorio)
+#print(f"Precisión: {precision}\nRecall: {recall}\nF1 Score: {f1}")
+#
+#print('\n\nRANDOM WALK WITH RESTART + FC')
+#vecinos2 = RandomWalkRestartCoautores(df_coauthors, autor_aleatorio,num_vecinos)
+##for vecino, peso in vecinos2:
+##    print(f"Vecino: {vecino}, Peso: {peso}")
+#print(f"Numero de vecinos: {len(vecinos2)}")
+#
+#ranking_revistas2 = calcular_ranking_revistas(df_journals, vecinos2)
+##for revista in ranking_revistas2:
+##    print(f"Revista: {revista}")
+#print(f"Numero de revistas: {len(ranking_revistas2)}")
+#
+#precision2, recall2, f12 = calcular_metricas(df_test, ranking_revistas2, autor_aleatorio)
+#print(f"Precisión: {precision2}\nRecall: {recall2}\nF1 Score: {f12}")
+#
+#print('\n\nRANDOM WALK WITH RESTART COMPLETO')
+#print (autor_aleatorio)
+#ranking_revistas3 = RandomWalkRestartCompleto(df_coauthors, df_journals, autor_aleatorio, num_revistas)
+#for revista in ranking_revistas3:
+#    print(f"Revista: {revista}")
+#print(f"Numero de revistas: {len(ranking_revistas3)}")
+#
+#precision3, recall3, f13 = calcular_metricas(df_test, ranking_revistas3, autor_aleatorio)
+#print(f"Precisión: {precision3}\nRecall: {recall3}\nF1 Score: {f13}")
+
+#print('\n\nFILTRADO COLABORATIVO SURPRISE')
+#vecinos4, revistas4 = FCSurprise(df_journals, autor_aleatorio, num_vecinos, num_revistas)
+##for vecino in vecinos4:
+##    print(f"Vecino: {vecino}")
+#print(f"Numero de vecinos: {len(vecinos4)}")
+#print(f"Numero de revistas: {len(revistas4)}")
+#
+##for revista in revistas4:
+##    print(f"Revista: {revista}")
+#
+#precision4, recall4, f14 = calcular_metricas(df_test, revistas4, autor_aleatorio)
+#print(f"Precisión: {precision4}\nRecall: {recall4}\nF1 Score: {f14}")
+
+#autores_aleatorios = df_authors['codigo_autor'].sample(n=100)
+
+# Inicializar listas para almacenar las métricas de cada algoritmo
+#metricas_fc = []
+metricas_rwr_fc = []
+#metricas_rwr_completo = []
+#metricas_surprise = []
+#
+autores_aleatorios = []
+num_vecinos = 30
+num_revistas = 10
+# Iterar sobre todos los autores aleatorios
+while len(autores_aleatorios) < 1000:
     autor_aleatorio = df_authors['codigo_autor'].sample(n=1).iloc[0]
-    
-if autor_aleatorio not in pd.read_csv(file_path_coauthors)['codigo_autor'].values:
-    print(f"El autor {autor_aleatorio} no tiene coautores en el conjunto de entrenamiento.")
-    exit()
-k = 5
-#autor_aleatorio = '0000-0002-4699-5627'
+    if autor_aleatorio in df_coauthors['codigo_autor'].values:
+        autores_aleatorios.append(autor_aleatorio)
 
-print(f"Autor aleatorio: {autor_aleatorio}")
+for autor in autores_aleatorios:
+    print(f"Calculando métricas para el autor: {autor}")
 
-print('\n\nFILTRADO COLABORATIVO PURO')
-# Calcular los autores más cercanos FC
-vecinos = FC(df_coauthors, autor_aleatorio, k)
-for vecino, peso in vecinos:
-    print(f"Vecino: {vecino}, Peso: {peso}")
-
-# Calcular el ranking de revistas
-ranking_revistas = calcular_ranking_revistas(df_journals, vecinos)
-for revista in ranking_revistas:
-    print(f"Revista: {revista}")
-
-## Calcular las métricas de precisión, recall y F1 score
-precision, recall, f1 = calcular_metricas(df_test, ranking_revistas, autor_aleatorio)
-print(f"Precisión: {precision}\nRecall: {recall}\nF1 Score: {f1}")
-
-print('\n\nRANDOM WALK WITH RESTART + FC')
-vecinos2 = RandomWalkRestartCoautores(df_coauthors, autor_aleatorio,k)
-for vecino, peso in vecinos2:
-    print(f"Vecino: {vecino}, Peso: {peso}")
-
-ranking_revistas2 = calcular_ranking_revistas(df_journals, vecinos2)
-for revista in ranking_revistas2:
-    print(f"Revista: {revista}")
-
-precision2, recall2, f12 = calcular_metricas(df_test, ranking_revistas2, autor_aleatorio)
-print(f"Precisión: {precision2}\nRecall: {recall2}\nF1 Score: {f12}")
-print('\n\nRANDOM WALK WITH RESTART COMPLETO')
-ranking_revistas3 = RandomWalkRestartCompleto(df_coauthors, df_journals, autor_aleatorio, 10)
-for revista in ranking_revistas3:
-    print(f"Revista: {revista}")
-
-
-precision3, recall3, f13 = calcular_metricas(df_test, ranking_revistas3, autor_aleatorio)
-print(f"Precisión: {precision3}\nRecall: {recall3}\nF1 Score: {f13}")
-
-print('\n\nFILTRADO COLABORATIVO SURPRISE')
-vecinos4, revistas4 = FCSurprise(df_journals, autor_aleatorio, k)
-for vecino in vecinos4:
-    print(f"Vecino: {vecino}")
-
-for revista in revistas4:
-    print(f"Revista: {revista}")
-
-precision4, recall4, f14 = calcular_metricas(df_test, revistas4, autor_aleatorio)
-print(f"Precisión: {precision4}\nRecall: {recall4}\nF1 Score: {f14}")
+#    # Filtrado Colaborativo Puro
+#    vecinos_fc = FC(df_coauthors, autor, num_vecinos)
+#    ranking_revistas_fc = calcular_ranking_revistas(df_journals, vecinos_fc, num_revistas)
+#    precision_fc, recall_fc, f1_fc = calcular_metricas(df_test, ranking_revistas_fc, autor)
+#    metricas_fc.append((precision_fc, recall_fc, f1_fc))
+#
+#    # Random Walk with Restart + FC
+    vecinos_rwr_fc = RandomWalkRestartCoautores(df_coauthors, autor, num_vecinos)
+    ranking_revistas_rwr_fc = calcular_ranking_revistas(df_journals, vecinos_rwr_fc, num_revistas)
+    precision_rwr_fc, recall_rwr_fc, f1_rwr_fc = calcular_metricas(df_test, ranking_revistas_rwr_fc, autor)
+    metricas_rwr_fc.append((precision_rwr_fc, recall_rwr_fc, f1_rwr_fc))
+#
+#    # Random Walk with Restart Completo
+#    ranking_revistas_rwr_completo = RandomWalkRestartCompleto(df_coauthors, df_journals, autor, num_revistas)
+#    precision_rwr_completo, recall_rwr_completo, f1_rwr_completo = calcular_metricas(df_test, ranking_revistas_rwr_completo, autor)
+#    metricas_rwr_completo.append((precision_rwr_completo, recall_rwr_completo, f1_rwr_completo))
+#
+#    # Filtrado Colaborativo Surprise
+#    vecinos_surprise, revistas_surprise = FCSurprise(df_journals, autor, num_vecinos, num_revistas)
+#    precision_surprise, recall_surprise, f1_surprise = calcular_metricas(df_test, revistas_surprise, autor)
+#    metricas_surprise.append((precision_surprise, recall_surprise, f1_surprise))
+#
+# Convertir las métricas a DataFrames
+#df_metricas_fc = pd.DataFrame(metricas_fc, columns=['Precision', 'Recall', 'F1'])
+df_metricas_rwr_fc = pd.DataFrame(metricas_rwr_fc, columns=['Precision', 'Recall', 'F1'])
+#df_metricas_rwr_completo = pd.DataFrame(metricas_rwr_completo, columns=['Precision', 'Recall', 'F1'])
+#df_metricas_surprise = pd.DataFrame(metricas_surprise, columns=['Precision', 'Recall', 'F1'])
+#
+# Calcular las medias de las métricas para cada algoritmo
+medias_metricas = {
+    'Algoritmo': ['RWR+FC'],#['Filtrado Colaborativo Puro', 'RWR + FC', 'RWR Completo', 'FC Surprise'],
+    'Precision': [df_metricas_rwr_fc['Precision'].mean()],#[df_metricas_fc['Precision'].mean(), df_metricas_rwr_fc['Precision'].mean(), df_metricas_rwr_completo['Precision'].mean(), df_metricas_surprise['Precision'].mean()],
+    'Recall': [df_metricas_rwr_fc['Recall'].mean()],#[df_metricas_fc['Recall'].mean(), df_metricas_rwr_fc['Recall'].mean(), df_metricas_rwr_completo['Recall'].mean(), df_metricas_surprise['Recall'].mean()],
+    'F1': [df_metricas_rwr_fc['F1'].mean()],#[df_metricas_fc['F1'].mean(), df_metricas_rwr_fc['F1'].mean(), df_metricas_rwr_completo['F1'].mean(), df_metricas_surprise['F1'].mean()]
+}
+#
+## Convertir a DataFrame
+df_medias_metricas = pd.DataFrame(medias_metricas)
+#
+## Guardar las medias en un archivo CSV
+df_medias_metricas.to_csv('medias_metricas_RWR+FC_final.csv', index=False)
+#
+print("Medias de las métricas guardadas en 'medias_metricas_algoritmos.csv'")

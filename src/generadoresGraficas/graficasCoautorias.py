@@ -1,34 +1,33 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Cargar los datos combinados
-combined_df = pd.read_csv('./procesados/training/autor-coautor-normalizado.csv')
+# Cargar el archivo CSV
+file_path = './procesados/training/autor-coautor-normalizado_filtrado.csv'
+df = pd.read_csv(file_path)
 
-# 1. Histograma de la relación de coautorías normalizadas
-plt.figure(figsize=(10, 6))
-plt.hist(combined_df['coautorías_normalizadas'], bins=20, edgecolor='black')
-plt.title('Distribución de la Relación de Coautorías Normalizadas')
-plt.xlabel('Relación de Coautorías Normalizadas')
-plt.ylabel('Frecuencia')
-plt.grid(True)
-plt.show()
+# Calcular el número de coautorías por autor
+num_coautorías = df.groupby('codigo_autor')['num_coautorías'].sum()
 
-# 2. Diagrama de dispersión de coautorías normalizadas vs. publicaciones totales
-plt.figure(figsize=(10, 6))
-plt.scatter(combined_df['num_publicaciones_totales'], combined_df['coautorías_normalizadas'], alpha=0.6)
-plt.title('Coautorías Normalizadas vs. Publicaciones Totales')
-plt.xlabel('Número de Publicaciones Totales')
-plt.ylabel('Relación de Coautorías Normalizadas')
-plt.grid(True)
-plt.show()
+# Definir los segmentos para agrupar el número de coautorías
+bins = [0, 1, 5, 10, 20, 50, 100, 200, 500, 1000]
+labels = ['0-1', '1-5', '5-10', '10-20', '20-50', '50-100', '100-200', '200-500', '500-1000']
 
-# 3. Gráfico de barras de los coautores con mayor número de coautorías normalizadas
-top_coauthors = combined_df.groupby('codigo_coautor')['coautorías_normalizadas'].sum().nlargest(10)
+# Agrupar el número de coautorías en segmentos
+segmentos = pd.cut(num_coautorías, bins=bins, labels=labels, right=False)
+
+# Contar cuántos autores tienen coautorías en cada segmento
+recuento_segmentos = segmentos.value_counts().sort_index()
+
+# Graficar el recuento de coautorías por segmento
 plt.figure(figsize=(12, 8))
-top_coauthors.plot(kind='bar', color='skyblue', edgecolor='black')
-plt.title('Top 10 Coautores con Mayor Número de Coautorías Normalizadas')
-plt.xlabel('Coautor')
-plt.ylabel('Suma de Coautorías Normalizadas')
-plt.xticks(rotation=45)
-plt.grid(True)
+recuento_segmentos.plot(kind='bar')
+plt.xlabel('Número de Coautorías (Segmentos)')
+plt.ylabel('Cantidad de Autores')
+plt.title('Recuento de Autores por Número de Coautorías en Segmentos')
+plt.tight_layout()
+
+# Guardar la gráfica como imagen
+plt.savefig('recuento_coautorías_segmentos.png')
+
+# Mostrar la gráfica
 plt.show()
