@@ -59,7 +59,7 @@ def RandomWalkRestartCompleto(df_coauthors, df_journals, autor, n, c=0.15, epsil
 
     return top_revistas[:n]
 
-def RandomWalkRestartCoautores(df_coauthors, autor, n, c=0.15, epsilon=1e-5, max_iters=100):
+def RandomWalkRestartCoautores(df_coauthors, autor, n, c=0.15, epsilon=1e-9, max_iters=100):
 
     # Seleccionar y renombrar las columnas según el formato requerido
     df_formatted = df_coauthors[['codigo_autor', 'codigo_coautor', 'coautorías_normalizadas']]
