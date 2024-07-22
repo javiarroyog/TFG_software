@@ -7,7 +7,7 @@ df = pd.read_csv('./procesados/training/autor-numpublic_training_filtrado.csv')
 
 # Crear categorías en bloques de 5, y agrupar los valores mayores de 100
 bins = list(range(0, 105, 5)) + [float('inf')]
-labels = [f'{i}-{i+4}' for i in range(0, 100, 5)] + ['100+']
+labels = [f'{i}-{i+5}' for i in range(0, 100, 5)] + ['100+']
 df['publicaciones_bloques'] = pd.cut(df['publicaciones_totales'], bins=bins, labels=labels, right=False)
 
 # Contar el número de autores para cada bloque

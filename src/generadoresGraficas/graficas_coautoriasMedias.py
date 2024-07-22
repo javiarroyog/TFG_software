@@ -11,13 +11,15 @@ coautor_count = pd.concat([data['codigo_autor']]).value_counts()
 coautor_count_df = coautor_count.reset_index()
 coautor_count_df.columns = ['codigo_autor', 'revistas']
 
-# Limitar el conteo a 50 y agrupar los valores mayores a 50
-coautor_count_df['revistas'] = coautor_count_df['revistas'].apply(lambda x: 51 if x > 50 else x)
+# Limitar el conteo a 30 y agrupar los valores mayores a 30
+coautor_count_df['revistas'] = coautor_count_df['revistas'].apply(lambda x: 41 if x > 40 else x)
 coautor_count_grouped = coautor_count_df['revistas'].value_counts().sort_index()
 
 # Asegurar que la categoría '50+' esté al final
-coautor_count_grouped = coautor_count_grouped.reindex(list(range(1, 51)) + ['50+'], fill_value=0)
+coautor_count_grouped = coautor_count_grouped.reindex(list(range(1, 42)), fill_value=0)
 
+# 41 pasa a ser 40+
+coautor_count_grouped = coautor_count_grouped.rename({41: '40+'})
 # Graficar los resultados
 plt.figure(figsize=(12, 6))
 coautor_count_grouped.plot(kind='bar')

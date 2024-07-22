@@ -4,6 +4,7 @@ from pyrwr.rwr import RWR
 from surprise import Dataset, KNNBasic, Reader
 
 
+#Función para añadir los arcos Revista->Autor y formatear el grafo según PYRWR
 def formateaPYRWR (df_coauthors, df_journals, df_journals2, r):
     # Renombrar columnas de df_journals para que coincidan con df_coauthors
     df_journals = df_journals.rename(columns={'codigo_revista': 'codigo_item', 'publicaciones_normalizadas': 'peso'})
@@ -11,8 +12,9 @@ def formateaPYRWR (df_coauthors, df_journals, df_journals2, r):
     df_coauthors = df_coauthors.rename(columns={'codigo_coautor': 'codigo_item', 'coautorías_normalizadas': 'peso'})
     
     #se multiplica por un factor r los pesos de las revistas y por 1-r los pesos de los coautores
-    df_journals['peso'] = df_journals['peso'] * r
-    df_coauthors['peso'] = df_coauthors['peso'] * (1-r)
+    if (r != 0):
+        df_journals['peso'] = df_journals['peso'] * r
+        df_coauthors['peso'] = df_coauthors['peso'] * (1-r)
 
     # Concatenar df_coauthors y df_journals
     df_combined = pd.concat([df_coauthors[['codigo_autor', 'codigo_item', 'peso']], df_journals[['codigo_autor', 'codigo_item', 'peso']], df_journals2[['codigo_autor', 'codigo_item', 'peso']]], ignore_index=True)
@@ -130,7 +132,7 @@ def getRevistas(df_journals, autor):
 
 def getRevistasPeso(df_journals, autor):
     return df_journals[df_journals['codigo_autor'] == autor][['codigo_revista', 'publicaciones_normalizadas']]
-
+# Actualmente no lo usaremos
 def FCSurprise(df_coauthors, autor, k=5, num_revistas=10):
     #inicializar el reader
     reader = Reader(rating_scale=(df_coauthors['publicaciones_normalizadas'].min(), df_coauthors['publicaciones_normalizadas'].max()))
@@ -174,13 +176,13 @@ def FCSurprise(df_coauthors, autor, k=5, num_revistas=10):
     
 def FC(df_coauthors, autor, k=30):
 
-    # Crear un DataFrame pivote donde las filas son los autores y las columnas son los coautores con el valor de coautorías normalizadas
+    # Crear un DataFrame pivote (auxiliar) donde las filas son los autores y las columnas son los coautores con el valor de coautorías normalizadas
     pivot_df = df_coauthors.pivot(index='codigo_autor', columns='codigo_coautor', values='coautorías_normalizadas').fillna(0)
 
     # Inicializar la lista para almacenar los vecinos más cercanos y sus pesos
     vecinos_mas_cercanos = []
 
-    # Verificar si el autor está en el DataFrame pivote
+    # Verificar si el autor al que vamos a recomendar está en el DataFrame pivote
     if autor in pivot_df.index:
         # Ordenar los coautores por el valor de coautorías normalizadas en orden descendente
         sorted_coauthors = pivot_df.loc[autor].sort_values(ascending=False)
@@ -240,77 +242,9 @@ def calcular_metricas(df_test, revistas_recomendadas, autor):
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-    return precision, recall, f1
+    return precision, recall, f1 
 
-def pruebas_unitarias():
-    # Seleccionar un autor aleatorio que esté en el conjunto de coautores
-    autor_aleatorio = df_authors['codigo_autor'].sample(n=1).iloc[0]
-    while autor_aleatorio not in pd.read_csv(file_path_coauthors)['codigo_autor'].values:
-        autor_aleatorio = df_authors['codigo_autor'].sample(n=1).iloc[0]
-
-    if autor_aleatorio not in pd.read_csv(file_path_coauthors)['codigo_autor'].values:
-        print(f"El autor {autor_aleatorio} no tiene coautores en el conjunto de entrenamiento.")
-        exit()
-    num_vecinos = 5
-    num_revistas = 10
-
-    print(f"Autor aleatorio: {autor_aleatorio}")
-
-    print('\n\nFILTRADO COLABORATIVO PURO')
-    # Calcular los autores más cercanos FC
-    vecinos = FC(df_coauthors, autor_aleatorio, num_vecinos)
-    print(f"Numero de vecinos: {len(vecinos)}")
-    #for vecino, peso in vecinos:
-    #    print(f"Vecino: {vecino}, Peso: {peso}")
-
-    # Calcular el ranking de revistas
-    ranking_revistas = calcular_ranking_revistas(df_journals, vecinos)
-    #for revista in ranking_revistas:
-    #    print(f"Revista: {revista}")
-    print(f"Numero de revistas: {len(ranking_revistas)}")
-
-    ## Calcular las métricas de precisión, recall y F1 score
-    precision, recall, f1 = calcular_metricas(df_test, ranking_revistas, autor_aleatorio)
-    print(f"Precisión: {precision}\nRecall: {recall}\nF1 Score: {f1}")
-
-    print('\n\nRANDOM WALK WITH RESTART + FC')
-    vecinos2 = RandomWalkRestartCoautores(df_coauthors, autor_aleatorio,num_vecinos)
-    #for vecino, peso in vecinos2:
-    #    print(f"Vecino: {vecino}, Peso: {peso}")
-    print(f"Numero de vecinos: {len(vecinos2)}")
-
-    ranking_revistas2 = calcular_ranking_revistas(df_journals, vecinos2)
-    #for revista in ranking_revistas2:
-    #    print(f"Revista: {revista}")
-    print(f"Numero de revistas: {len(ranking_revistas2)}")
-
-    precision2, recall2, f12 = calcular_metricas(df_test, ranking_revistas2, autor_aleatorio)
-    print(f"Precisión: {precision2}\nRecall: {recall2}\nF1 Score: {f12}")
-
-    print('\n\nRANDOM WALK WITH RESTART COMPLETO')
-    print (autor_aleatorio)
-    ranking_revistas3 = RandomWalkRestartCompleto(df_coauthors, df_journals, autor_aleatorio, num_revistas)
-    for revista in ranking_revistas3:
-        print(f"Revista: {revista}")
-    print(f"Numero de revistas: {len(ranking_revistas3)}")
-
-    precision3, recall3, f13 = calcular_metricas(df_test, ranking_revistas3, autor_aleatorio)
-    print(f"Precisión: {precision3}\nRecall: {recall3}\nF1 Score: {f13}")   
-    print('\n\nFILTRADO COLABORATIVO SURPRISE')
-    vecinos4, revistas4 = FCSurprise(df_journals, autor_aleatorio, num_vecinos, num_revistas)
-    #for vecino in vecinos4:
-    #    print(f"Vecino: {vecino}")
-    print(f"Numero de vecinos: {len(vecinos4)}")
-    print(f"Numero de revistas: {len(revistas4)}")
-
-    #for revista in revistas4:
-    #    print(f"Revista: {revista}")
-
-    precision4, recall4, f14 = calcular_metricas(df_test, revistas4, autor_aleatorio)
-    print(f"Precisión: {precision4}\nRecall: {recall4}\nF1 Score: {f14}")   
-    autores_aleatorios = df_authors['codigo_autor'].sample(n=100)
-
-def prueba_final (df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, num_vecinos, num_revistas ,c ,e, r ,path_resultados):
+def prueba_final (df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, num_vecinos, num_revistas ,path_resultados ,c=0.15 ,e=1e-9, r=0):
     # Inicializar listas para almacenar las métricas de cada algoritmo
     metricas_fc = []
     metricas_rwr_fc = []
@@ -333,11 +267,17 @@ def prueba_final (df_journals,df_journals2, df_coauthors, df_test, autores_aleat
             print(f"Numero de revistas: {num_revistas}")
         
         # Filtrado Colaborativo Puro
-        #vecinos_fc = FC(df_coauthors, autor, num_vecinos)
-        #ranking_revistas_fc = calcular_ranking_revistas(df_journals, vecinos_fc, num_revistas)
-        #precision_fc, recall_fc, f1_fc = calcular_metricas(df_test, ranking_revistas_fc, autor)
-        #metricas_fc.append((precision_fc, recall_fc, f1_fc))
-#
+        
+        vecinos_fc = FC(df_coauthors, autor, num_vecinos)
+        for i in range(0,10,1):
+            a_borrar = 5 * i
+            if a_borrar != 0:
+                vecinos_fc = vecinos_fc[:-a_borrar]
+            ranking_revistas_fc = calcular_ranking_revistas(df_journals, vecinos_fc, num_revistas)
+            precision_fc, recall_fc, f1_fc = calcular_metricas(df_test, ranking_revistas_fc, autor)
+            metricas_fc.append(( 50 - 5 * i ,precision_fc, recall_fc, f1_fc))
+            print(f"N: {50 - 5 * i}, Precision: {precision_fc}, Recall: {recall_fc}, F1: {f1_fc}")
+
         ### Random Walk with Restart + FC
         #vecinos_rwr_fc = RandomWalkRestartCoautores(df_coauthors, autor, num_vecinos)
         #ranking_revistas_rwr_fc = calcular_ranking_revistas(df_journals, vecinos_rwr_fc, num_revistas)
@@ -345,9 +285,9 @@ def prueba_final (df_journals,df_journals2, df_coauthors, df_test, autores_aleat
         #metricas_rwr_fc.append((precision_rwr_fc, recall_rwr_fc, f1_rwr_fc))
 
         # Random Walk with Restart Completo
-        ranking_revistas_rwr_completo = RandomWalkRestartCompleto(codigo_a_indice, indice_a_codigo, ruta, df_journals, autor, num_revistas,c,e)
-        precision_rwr_completo, recall_rwr_completo, f1_rwr_completo = calcular_metricas(df_test, ranking_revistas_rwr_completo, autor)
-        metricas_rwr_completo.append((precision_rwr_completo, recall_rwr_completo, f1_rwr_completo))
+        #ranking_revistas_rwr_completo = RandomWalkRestartCompleto(codigo_a_indice, indice_a_codigo, ruta, df_journals, autor, num_revistas,c,e)
+        #precision_rwr_completo, recall_rwr_completo, f1_rwr_completo = calcular_metricas(df_test, ranking_revistas_rwr_completo, autor)
+        #metricas_rwr_completo.append((precision_rwr_completo, recall_rwr_completo, f1_rwr_completo))
 
         # Filtrado Colaborativo Surprise
         #vecinos_surprise, revistas_surprise = FCSurprise(df_journals, autor, num_vecinos, num_revistas)
@@ -365,23 +305,36 @@ def prueba_final (df_journals,df_journals2, df_coauthors, df_test, autores_aleat
         
 
     # Convertir las métricas a DataFrames
-    df_metricas_rwr_completo = pd.DataFrame(metricas_rwr_completo, columns=['Precision', 'Recall', 'F1'])
+    df_metricas_fc = pd.DataFrame(metricas_fc, columns=['N', 'Precision', 'Recall', 'F1'])
     
-    # Calcular las medias de las métricas para cada algoritmo
-    medias_metricas = {
-        'K': [num_revistas], # 'K' es el número de revistas a recomendar
-        'E': [e],
-        'C': [c],
-        'Precision': [df_metricas_rwr_completo['Precision'].mean()],
-        'Recall': [df_metricas_rwr_completo['Recall'].mean()],
-        'F1': [df_metricas_rwr_completo['F1'].mean()]
-    }
+    # Calcular las medias de las métricas para cada N y guardarlas en un archivo CSV
+    for i in range(10):
+        df_metricas_fc_aux = df_metricas_fc[df_metricas_fc['N'] == 50 - 5 * i]
+        medias_metricas = {
+            'N': [50 - 5 * i],
+            'Precision': [df_metricas_fc_aux['Precision'].mean()],
+            'Recall': [df_metricas_fc_aux['Recall'].mean()],
+            'F1': [df_metricas_fc_aux['F1'].mean()]
+        }
+        #
+        ## Convertir a DataFrame
+        df_medias_metricas = pd.DataFrame(medias_metricas)
+        #
+        ## Guardar las medias en un archivo CSV
+        path_resultados = path_resultados + str(50 - 5 * i) + '.csv'
+        df_medias_metricas.to_csv(path_resultados, index=False, mode='a', header=False)
+
+    #medias_metricas = {
+    #    'Precision': [df_metricas_fc['Precision'].mean()],
+    #    'Recall': [df_metricas_fc['Recall'].mean()],
+    #    'F1': [df_metricas_fc['F1'].mean()]
+    #}
     #
     ## Convertir a DataFrame
-    df_medias_metricas = pd.DataFrame(medias_metricas)
-    #
-    ## Guardar las medias en un archivo CSV
-    df_medias_metricas.to_csv(path_resultados, index=False)
+    #df_medias_metricas = pd.DataFrame(medias_metricas)
+    ##
+    ### Guardar las medias en un archivo CSV
+    #df_medias_metricas.to_csv(path_resultados, index=False)
     ##
     print("FIN")
 
@@ -395,6 +348,7 @@ file_path_authors = './procesados/training/autor-numpublic_training_filtrado.csv
 file_path_coauthors = './procesados/training/autor-coautor-normalizado_filtrado.csv'
 # Archivo para saber las revistas en las que ha publicado cada autor
 file_path_journals = './procesados/training/autor-revista-normalizado.csv'
+# Archivo para saber las revistas en las que ha publicado cada autor + ratings Revisa->Autor
 file_path_journals2 = './procesados/training/autor-revista-biNormalizado.csv'
 # Archivo de test para evaluar las recomendaciones
 file_path_test = './procesados/test/autor-revista-numpublic_test_filtrado.csv'
@@ -418,7 +372,6 @@ autores_aleatorios = []
 #df_autores = pd.DataFrame(autores_aleatorios, columns=['codigo_autor'])
 #df_autores.to_csv(ruta, index=False)
 
-
 autores_aleatorios = pd.read_csv('./src/general/autores_aleatorios.csv')['codigo_autor']
 
 ################################################################################
@@ -426,16 +379,16 @@ autores_aleatorios = pd.read_csv('./src/general/autores_aleatorios.csv')['codigo
 ################################################################################
 
 ## ENFOQUE ESTÁTICO:
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 3,0.15, 1e-9, './src/resultados/k/results_k3.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 5,0.15, 1e-9, './src/resultados/k/results_k5.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10,0.15, 1e-9, './src/resultados/k/results_k10.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 15,0.15, 1e-9, './src/resultados/k/results_k15.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 20,0.15, 1e-9, './src/resultados/k/results_k20.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 25,0.15, 1e-9, './src/resultados/k/results_k25.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 30,0.15, 1e-9, './src/resultados/k/results_k30.csv')
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/k/results_k3.csv', 30, 3,0.15, 1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/k/results_k5.csv', 30, 5,0.15, 1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/k/results_k10.csv', 30, 10,0.15, 1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/k/results_k15.csv', 30, 15,0.15, 1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/k/results_k20.csv', 30, 20,0.15, 1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/k/results_k25.csv', 30, 25,0.15, 1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/k/results_k30.csv', 30, 30,0.15, 1e-9)
 
 ## ENFOQUE DINÁMICO:
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30,0 ,0.15, 1e-9, './src/resultados/k/results_kdinamico.csv')
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/k/results_kdinamico.csv', 30,0 ,0.15, 1e-9)
 
 ################################################################################
 ## FIN PRUEBAS PARA FIJAR EL NÚMERO K DE REVISTAS A RECOMENDAR
@@ -445,27 +398,27 @@ autores_aleatorios = pd.read_csv('./src/general/autores_aleatorios.csv')['codigo
 ################################################################################
 ## PRUEBAS PARA FIJAR LA TASA C DE RANDOM WALK WITH RESTART
 ################################################################################
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.05,1e-9, './src/resultados/c/results_c005.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.10,1e-9, './src/resultados/c/results_c010.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15,1e-9, './src/resultados/c/results_c015.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.20,1e-9, './src/resultados/c/results_c020.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.25,1e-9, './src/resultados/c/results_c025.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.30,1e-9, './src/resultados/c/results_c030.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.35,1e-9, './src/resultados/c/results_c035.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.40,1e-9, './src/resultados/c/results_c040.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.45,1e-9, './src/resultados/c/results_c045.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.50,1e-9, './src/resultados/c/results_c050.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.55,1e-9, './src/resultados/c/results_c055.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.60,1e-9, './src/resultados/c/results_c060.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.65,1e-9, './src/resultados/c/results_c065.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.70,1e-9, './src/resultados/c/results_c070.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.75,1e-9, './src/resultados/c/results_c075.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.80,1e-9, './src/resultados/c/results_c080.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.85,1e-9, './src/resultados/c/results_c085.csv')
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.90,1e-9, './src/resultados/c/results_c090.csv')
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c005.csv', 30, 10, 0.05,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c010.csv', 30, 10, 0.10,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c015.csv', 30, 10, 0.15,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c020.csv', 30, 10, 0.20,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c025.csv', 30, 10, 0.25,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c030.csv', 30, 10, 0.30,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c035.csv', 30, 10, 0.35,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c040.csv', 30, 10, 0.40,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c045.csv', 30, 10, 0.45,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c050.csv', 30, 10, 0.50,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c055.csv', 30, 10, 0.55,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c060.csv', 30, 10, 0.60,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c065.csv', 30, 10, 0.65,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c070.csv', 30, 10, 0.70,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c075.csv', 30, 10, 0.75,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c080.csv', 30, 10, 0.80,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c085.csv', 30, 10, 0.85,1e-9)
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, './src/resultados/c/results_c090.csv', 30, 10, 0.90,1e-9)
 
 # Hemos visto que la mejor es 0.15:
-#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 5, 0.15, 1e-9, './src/resultados/c/FINAL_C015.csv')
+#prueba_final(df_journals, df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/c/FINAL_C015.csv', 30, 5, 0.15, 1e-9)
 ################################################################################
 # FIN PRUEBAS PARA FIJAR LA TASA C DE RANDOM WALK WITH RESTART
 ################################################################################
@@ -473,15 +426,15 @@ autores_aleatorios = pd.read_csv('./src/general/autores_aleatorios.csv')['codigo
 ################################################################################
 ## PRUEBAS PARA FIJAR LA TASA E DE RANDOM WALK WITH RESTART
 ################################################################################
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-9, './src/resultados/e/results_e1e9.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-8, './src/resultados/e/results_e1e8.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-7, './src/resultados/e/results_e1e7.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-6, './src/resultados/e/results_e1e6.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-5, './src/resultados/e/results_e1e5.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-4, './src/resultados/e/results_e1e4.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-3, './src/resultados/e/results_e1e3.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-2, './src/resultados/e/results_e1e2.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0.15, 1e-1, './src/resultados/e/results_e1e1.csv')
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e9.csv', 30, 10, 0.15, 1e-9)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e8.csv', 30, 10, 0.15, 1e-8)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e7.csv', 30, 10, 0.15, 1e-7)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e6.csv', 30, 10, 0.15, 1e-6)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e5.csv', 30, 10, 0.15, 1e-5)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e4.csv', 30, 10, 0.15, 1e-4)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e3.csv', 30, 10, 0.15, 1e-3)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_e1e2.csv', 30, 10, 0.15, 1e-2)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/e/results_1.csv', 30, 10, 0.15, 1)
 
 ################################################################################
 # FIN PRUEBAS PARA FIJAR LA TASA E DE RANDOM WALK WITH RESTART
@@ -490,18 +443,22 @@ autores_aleatorios = pd.read_csv('./src/general/autores_aleatorios.csv')['codigo
 ################################################################################
 ## PRUEBAS AÑADIENDO ARCOS REVISTA->AUTOR
 ################################################################################
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0, './src/resultados/pruebarwrCONRevistas.csv')
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 1, './src/resultados/pruebarwrSINRevistas.csv')
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/pruebarwrCONRevistas.csv', 30, 10, 0)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/pruebarwrSINRevistas.csv', 30, 10, 1)
 
 ################################################################################
 ## PRUEBAS PARA FACTOR R
 ################################################################################
-prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 5, 0.15, 1e-9, 0.7, './src/resultados/r/pruebaFactorR07.csv')
-prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 5, 0.15, 1e-9, 0.9, './src/resultados/r/pruebaFactorR09.csv')
-
-
-#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 30, 10, 0, './src/resultados/pruebaFactorR99.csv')
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/r/pruebaFactorR07.csv', 30, 5, 0.15, 1e-9, 0.7)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/r/pruebaFactorR09.csv', 30, 5, 0.15, 1e-9, 0.9)
+#prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios,'./src/resultados/r/pruebaFactorR099.csv', 30, 5, 0.15, 1e-9, 0.99)
 
 ################################################################################
 ## FIN PRUEBAS PARA FACTOR R
 ################################################################################
+
+################################################################################
+## PRUEBAS PARA FACTOR N DE FC
+################################################################################
+
+prueba_final(df_journals,df_journals2, df_coauthors, df_test, autores_aleatorios, 50,10,'./src/resultados/n/results_n')
