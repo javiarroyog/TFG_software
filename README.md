@@ -1,4 +1,4 @@
-# TFG_software
+# TFG software
 
 **Recomendación de revistas científicas usando redes de coautoría**  
 _Uso de algoritmos RWR y filtrado colaborativo para la recomendación de revistas científicas_
